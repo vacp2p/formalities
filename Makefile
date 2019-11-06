@@ -8,10 +8,8 @@ all: check tlaps
 
 # Run the TLC model checker
 check:
-	cd MVDS && \
-	${TLA} tlc -workers ${WORKERS} MVDS.tla -config models/SpecOK.cfg
+	${TLA} cd MVDS && tlc -workers ${WORKERS} MVDS.tla -config models/SpecOK.cfg
 
 # Run the TLAPS proof checker
 tlaps:
-	cd MVDS && \
-	${TLA} tlapm -I /usr/local/lib/tlaps MVDS.tla
+	${TLA} cd MVDS && tlapm -I /usr/local/lib/tlaps MVDS.tla
