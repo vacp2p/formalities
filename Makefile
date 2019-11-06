@@ -8,8 +8,8 @@ all: check pdfs tlaps
 
 # Run the TLC model checker
 check:
-	${TLA} tlc -workers ${WORKERS} MVDS/mvds.tla -config MVDS/models/SpecOK.cfg
+	${TLA} tlc -workers ${WORKERS} MVDS/MVDS.tla -config MVDS/models/SpecOK.cfg
 
 # Run the TLAPS proof checker
 tlaps:
-	${TLA} tlapm -I /usr/local/lib/tlaps MVDS/mvds.tla
+	${TLA} tlapm -I /usr/local/lib/tlaps MVDS/MVDS.tla
