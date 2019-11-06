@@ -115,10 +115,6 @@ Spec == Init /\ [][Next]_vars
 
 -----------------------------------------------------------------------------
 
-THEOREM Invariance == Spec => TypeOK
-
------------------------------------------------------------------------------
-
 (***************************************************************************)
 (* A state constraint useful for validating the specification,             *)
 (* asserts that all messages are delivered.                                *)
