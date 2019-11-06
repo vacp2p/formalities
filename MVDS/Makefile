@@ -1,6 +1,6 @@
 WORKERS := 4
 
-TLA := docker run --rm -it --workdir /mnt -v ${PWD}/MVDS:/mnt talex5/tla
+TLA := docker run --rm -it --workdir /mnt -v ${shell pwd}:/mnt talex5/tla
 
 .PHONY: all check tlaps
 
