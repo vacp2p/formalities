@@ -10,7 +10,9 @@ CONSTANTS N \* the set of all possible nodes
 Node == 1 .. N \* the nodes participating
 
 VARIABLES state, \* the state of every node
-          network \* the network with which nodes pass messages to each other
+          network, \* the network with which nodes pass messages to each other
+          syncstate, \* the sync state for the node
+          epoch \* the epochs for nodes
 
 \* add retransmissions
 \* retransmissions will require better usage of state
@@ -25,6 +27,8 @@ REQUEST == "request"
 MSG == "msg"
 ACK == "ack"
 
+Type == {"-", OFFER, REQUEST, MSG}
+
 OfferMessage(msg) == [type |-> OFFER, id |-> msg]
 RequestMessage(msg) == [type |-> REQUEST, id |-> msg]
 MsgMessage(msg) == [type |-> MSG, id |-> msg]
@@ -37,11 +41,18 @@ Message ==
   {AckMessage(msg) : msg \in Node}
 
 (***************************************************************************)
+(* Synchronization State used in MVDS                                      *)
+(***************************************************************************)
+SyncState == [type: Type, SendCount: Nat, SendEpoch: Nat]
+InitialSyncState(t) == [type |-> t, SendCount |-> 0, SendEpoch |-> 0]
+
+(***************************************************************************)
 (* The type correctness predicate.                                         *)
 (***************************************************************************)
 TypeOK ==
   /\ network \in [Node -> [Node -> Seq(Message)]]
   /\ state \in [Node -> [Node -> State]]
+  /\ syncstate \in [Node -> [Node ->  [N -> SyncState]]]
 
 (***************************************************************************)
 (* The initial state predicate.                                            *)
@@ -49,11 +60,29 @@ TypeOK ==
 Init ==
   /\ network = [s \in Node |-> [r \in Node |-> <<>> ]]
   /\ state = [s \in Node |-> [r \in Node |-> "-" ]]
+  /\ syncstate = [s \in Node |-> [r \in Node |-> [i \in N |-> InitialSyncState("-") ]]]
+
+(***************************************************************************)
+(* Node `n` sends a message `m` to `r`.                                    *)
+(* The message may either be dropped or transmitted                        *)
+(***************************************************************************)
+AppendMessage(n, r, m) ==
+  /\ \/ /\ network' = [network EXCEPT ![n][r] = Append(@, m)]
+     \/ /\ TRUE
+        /\ UNCHANGED network
+
+(***************************************************************************)
+(* Node `n` adds offer sync state for `r`                                  *)
+(***************************************************************************)
+OfferV2(n, r) ==
+    /\ syncstate[n][r][n].type = "-"
+    /\ syncstate' = [syncstate EXCEPT ![n][r][n] = InitialSyncState(OFFER)]
+    /\ UNCHANGED <<network, epoch>>
 
 (***************************************************************************)
 (* Node `n` sends an offer to `r`                                          *)
 (***************************************************************************)
-Offer(n, r) ==
+Offer(n, r) == \* @TODO this should only append to the sync state, there is then a send function that sends everything in state
   /\ state[n][r] = "-"
   /\ network' = [network EXCEPT ![n][r] = Append(@, OfferMessage(n))]
   /\ state' = [state EXCEPT ![n][r] = "offered"]
