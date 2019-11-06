@@ -5,13 +5,17 @@
 (***************************************************************************)
 EXTENDS Naturals, Sequences, TLC
 
-Node == 1 .. 2 \* the nodes participating
+CONSTANTS N \* the set of all possible nodes
+
+Node == 1 .. N \* the nodes participating
 
 VARIABLES state, \* the state of every node
           network \* the network with which nodes pass messages to each other
 
 \* add retransmissions
 \* retransmissions will require better usage of state
+
+State == { "-", "offered", "delivered" }
 
 (***************************************************************************)
 (* Messages used in MVDS                                                   *)
@@ -37,20 +41,20 @@ Message ==
 (***************************************************************************)
 TypeOK ==
   /\ network \in [Node -> [Node -> Seq(Message)]]
-  /\ state \in [Node -> [Node -> STRING]]
+  /\ state \in [Node -> [Node -> State]]
 
 (***************************************************************************)
 (* The initial state predicate.                                            *)
 (***************************************************************************)
 Init ==
   /\ network = [s \in Node |-> [r \in Node |-> <<>> ]]
-  /\ state = [s \in Node |-> [r \in Node |-> "" ]]
+  /\ state = [s \in Node |-> [r \in Node |-> "-" ]]
 
 (***************************************************************************)
 (* Node `n` sends an offer to `r`                                          *)
 (***************************************************************************)
 Offer(n, r) ==
-  /\ state[n][r] = ""
+  /\ state[n][r] = "-"
   /\ network' = [network EXCEPT ![n][r] = Append(@, OfferMessage(n))]
   /\ state' = [state EXCEPT ![n][r] = "offered"]
 
@@ -63,7 +67,7 @@ ReceiveOffer(n, s) ==
      IN /\ m.type = OFFER
         /\ network' = [network EXCEPT ![s][n] = Tail(@),
                                       ![n][s] = Append(@, RequestMessage(s))]
-   /\ UNCHANGED state
+        /\ UNCHANGED state
 
 (***************************************************************************)
 (* Node `n` receives a request from `s`                                    *)
@@ -74,7 +78,7 @@ ReceiveRequest(n, s) ==
      IN /\ m.type = REQUEST
         /\ network' = [network EXCEPT ![s][n] = Tail(@),
                                       ![n][s] = Append(@, MsgMessage(n))]
-   /\ UNCHANGED state
+        /\ UNCHANGED state
 
 (***************************************************************************)
 (* Node `n` receives a message from `s`                                    *)
@@ -108,5 +112,18 @@ Next ==
 vars == <<network, state>>
 
 Spec == Init /\ [][Next]_vars
+
+-----------------------------------------------------------------------------
+
+THEOREM Invariance == Spec => TypeOK
+
+-----------------------------------------------------------------------------
+
+(***************************************************************************)
+(* A state constraint useful for validating the specification,             *)
+(* asserts that all messages are delivered.                                *)
+(***************************************************************************)
+AllMessagesDelivered ==
+  /\ \A n \in Node : \A s \in Node \ {n} : state[n][s] # "delivered"
 
 =============================================================================
