@@ -8,7 +8,10 @@ EXTENDS Naturals, Sequences, TLC
 Node == 1 .. 2 \* the nodes participating
 
 VARIABLES state, \* the state of every node
-          network \* send messages
+          network \* the network with which nodes pass messages to each other
+
+\* add retransmissions
+\* retransmissions will require better usage of state
 
 (***************************************************************************)
 (* Messages used in MVDS                                                   *)
@@ -34,6 +37,7 @@ Message ==
 (***************************************************************************)
 TypeOK ==
   /\ network \in [Node -> [Node -> Seq(Message)]]
+  /\ state \in [Node -> [Node -> STRING]]
 
 (***************************************************************************)
 (* The initial state predicate.                                            *)
