@@ -1,15 +1,8 @@
-WORKERS := 4
+SUBDIRS := $(wildcard */.)
 
-TLA := docker run --rm -it --workdir /mnt -v ${PWD}:/mnt talex5/tla
+all: $(SUBDIRS)
+$(SUBDIRS):
+        $(MAKE) -C $@
 
-.PHONY: all check tlaps
+.PHONY: all $(SUBDIRS)
 
-all: check pdfs tlaps
-
-# Run the TLC model checker
-check:
-	${TLA} tlc -workers ${WORKERS} MVDS/MVDS.tla -config MVDS/models/SpecOK.cfg
-
-# Run the TLAPS proof checker
-tlaps:
-	${TLA} tlapm -I /usr/local/lib/tlaps MVDS/MVDS.tla
