@@ -80,6 +80,23 @@ OfferV2(n, r) ==
     /\ UNCHANGED <<network, epoch>>
 
 (***************************************************************************)
+(* Node `n` receives an offer from `r` and adds request sync state for `r` *)
+(***************************************************************************)
+OnOfferV2(n, r) ==
+    /\ syncstate[n][r][n].type = ""
+    /\ syncstate' = [syncstate EXCEPT ![n][r][n] = InitialSyncState(REQUEST)]
+    /\ UNCHANGED <<network, epoch>>
+
+(***************************************************************************)
+(* Node `n` receives a request from `r`                                    *)
+(* and adds message sync state for `r`                                     *)
+(***************************************************************************)
+OnRequestV2(n, r) ==
+    /\ syncstate[n][r][n].type = ""
+    /\ syncstate' = [syncstate EXCEPT ![n][r][n] = InitialSyncState(MSG)]
+    /\ UNCHANGED <<network, epoch>>
+
+(***************************************************************************)
 (* Node `n` sends an offer to `r`                                          *)
 (***************************************************************************)
 Offer(n, r) == \* @TODO this should only append to the sync state, there is then a send function that sends everything in state
