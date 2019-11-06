@@ -1,6 +1,6 @@
 ------------------------------- MODULE MVDS ---------------------------------
 (***************************************************************************)
-(*        TLA+ specification of Minimally Viable Data Sychronization       *)
+(*        TLA+ specification of Minimum Viable Data Synchronization        *)
 (*                     https://specs.vac.dev/mvds.html                     *)
 (***************************************************************************)
 EXTENDS Naturals, Sequences, TLC
