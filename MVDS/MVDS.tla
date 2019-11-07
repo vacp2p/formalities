@@ -3,7 +3,7 @@
 (*        TLA+ specification of Minimum Viable Data Synchronization        *)
 (*                     https://specs.vac.dev/mvds.html                     *)
 (***************************************************************************)
-EXTENDS Naturals, Sequences, TLC
+EXTENDS Naturals, Sequences
 
 CONSTANTS N \* the set of all possible nodes
 
