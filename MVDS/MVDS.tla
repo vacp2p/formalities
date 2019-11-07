@@ -9,8 +9,7 @@ CONSTANTS N \* the set of all possible nodes
 
 Node == 1 .. N \* the nodes participating
 
-VARIABLES state, \* the state of every node
-          network, \* the network with which nodes pass messages to each other
+VARIABLES network, \* the network with which nodes pass messages to each other
           syncstate, \* the sync state for the node
           epoch \* the epochs for nodes
 
@@ -27,7 +26,7 @@ REQUEST == "request"
 MSG == "msg"
 ACK == "ack"
 
-Type == {"-", OFFER, REQUEST, MSG}
+Type == {"-", OFFER, REQUEST, MSG, "done"}
 
 OfferMessage(msg) == [type |-> OFFER, id |-> msg]
 RequestMessage(msg) == [type |-> REQUEST, id |-> msg]
@@ -45,22 +44,21 @@ Message ==
 (***************************************************************************)
 SyncState == [type: Type, SendCount: Nat, SendEpoch: Nat]
 InitialSyncState(t) == [type |-> t, SendCount |-> 0, SendEpoch |-> 0]
+Test == [type |-> "-", SendCount |-> 0, SendEpoch |-> 0]
 
 (***************************************************************************)
 (* The type correctness predicate.                                         *)
 (***************************************************************************)
 TypeOK ==
   /\ network \in [Node -> [Node -> Seq(Message)]]
-  /\ state \in [Node -> [Node -> State]]
-  /\ syncstate \in [Node -> [Node ->  [N -> SyncState]]]
 
 (***************************************************************************)
 (* The initial state predicate.                                            *)
 (***************************************************************************)
 Init ==
   /\ network = [s \in Node |-> [r \in Node |-> <<>> ]]
-  /\ state = [s \in Node |-> [r \in Node |-> "-" ]]
-  /\ syncstate = [s \in Node |-> [r \in Node |-> [i \in N |-> InitialSyncState("-") ]]]
+  /\ syncstate = [s \in Node |-> [r \in Node |-> [i \in Node |-> Test ]]]
+  /\ epoch = [s \in Node |-> 0]
 
 (***************************************************************************)
 (* Node `n` sends a message `m` to `r`.                                    *)
@@ -75,87 +73,91 @@ AppendMessage(n, r, m) ==
 (* Node `n` adds offer sync state for `r`                                  *)
 (***************************************************************************)
 OfferV2(n, r) ==
-    /\ syncstate[n][r][n].type = "-"
-    /\ syncstate' = [syncstate EXCEPT ![n][r][n] = InitialSyncState(OFFER)]
-    /\ UNCHANGED <<network, epoch>>
+  /\ syncstate[n][r][n].type = "-"
+  /\ syncstate' = [syncstate EXCEPT ![n][r][n] = InitialSyncState(OFFER)]
+  /\ UNCHANGED <<network, epoch>>
 
 (***************************************************************************)
-(* Node `n` receives an offer from `r` and adds request sync state for `r` *)
+(* Node `n` receives an offer from `s` and adds request sync state for `s` *)
 (***************************************************************************)
-OnOfferV2(n, r) ==
-    /\ syncstate[n][r][n].type = ""
-    /\ syncstate' = [syncstate EXCEPT ![n][r][n] = InitialSyncState(REQUEST)]
-    /\ UNCHANGED <<network, epoch>>
-
-(***************************************************************************)
-(* Node `n` receives a request from `r`                                    *)
-(* and adds message sync state for `r`                                     *)
-(***************************************************************************)
-OnRequestV2(n, r) ==
-    /\ syncstate[n][r][n].type = ""
-    /\ syncstate' = [syncstate EXCEPT ![n][r][n] = InitialSyncState(MSG)]
-    /\ UNCHANGED <<network, epoch>>
-
-(***************************************************************************)
-(* Node `n` sends an offer to `r`                                          *)
-(***************************************************************************)
-Offer(n, r) == \* @TODO this should only append to the sync state, there is then a send function that sends everything in state
-  /\ state[n][r] = "-"
-  /\ network' = [network EXCEPT ![n][r] = Append(@, OfferMessage(n))]
-  /\ state' = [state EXCEPT ![n][r] = "offered"]
-
-(***************************************************************************)
-(* Node `n` receives an offer from `s`                                     *)
-(***************************************************************************)
-ReceiveOffer(n, s) ==
+OnOfferV2(n, s) ==
   /\ network[s][n] # << >>
   /\ LET m == Head(network[s][n])
      IN /\ m.type = OFFER
-        /\ network' = [network EXCEPT ![s][n] = Tail(@),
-                                      ![n][s] = Append(@, RequestMessage(s))]
-        /\ UNCHANGED state
+        /\ network' = [network EXCEPT ![s][n] = Tail(@)]
+        /\ syncstate[n][s][m.id].type = ""
+        /\ syncstate' = [syncstate EXCEPT ![n][s][m.id] = InitialSyncState(REQUEST)]
+  /\ UNCHANGED <<epoch>>
 
 (***************************************************************************)
 (* Node `n` receives a request from `s`                                    *)
+(* and adds message sync state for `s`                                     *)
 (***************************************************************************)
-ReceiveRequest(n, s) ==
+OnRequestV2(n, s) ==
   /\ network[s][n] # << >>
   /\ LET m == Head(network[s][n])
      IN /\ m.type = REQUEST
-        /\ network' = [network EXCEPT ![s][n] = Tail(@),
-                                      ![n][s] = Append(@, MsgMessage(n))]
-        /\ UNCHANGED state
-
-(***************************************************************************)
-(* Node `n` receives a message from `s`                                    *)
-(***************************************************************************)
-ReceiveMessage(n, s) ==
-  /\ network[s][n] # << >>
-  /\ LET m == Head(network[s][n])
-     IN /\ m.type = MSG
-        /\ network' = [network EXCEPT ![s][n] = Tail(@),
-                                      ![n][s] = Append(@, AckMessage(s))]
-        /\ UNCHANGED state
-
-(***************************************************************************)
-(* Node `n` receives a ack from `s`                                        *)
-(***************************************************************************)
-ReceiveAck(n, s) ==
-  /\ network[s][n] # << >>
-  /\ LET m == Head(network[s][n])
-     IN /\ m.type = ACK
         /\ network' = [network EXCEPT ![s][n] = Tail(@)]
-        /\ state' = [state EXCEPT ![s][n] = "delivered"]
+        /\ syncstate[n][s][m.id].type = ""
+        /\ syncstate' = [syncstate EXCEPT ![n][s][m.id] = InitialSyncState(MSG)]
+  /\ UNCHANGED <<epoch>>
+
+(***************************************************************************)
+(* Node `n` receives a message from `s` and sends an ack to `s`            *)
+(***************************************************************************)
+OnMessageV2(n, s) ==
+  /\ network[s][n] # << >>
+    /\ LET m == Head(network[s][n])
+       IN /\ m.type = MSG
+          /\ network' = [network EXCEPT ![s][n] = Tail(@)]
+          /\ AppendMessage(s, n, AckMessage(m.id))
+  /\ UNCHANGED <<epoch>>
+
+(***************************************************************************)
+(* Node `n` receives an ack from `s`                                       *)
+(***************************************************************************)
+OnAckV2(n, s) ==
+  /\ network[s][n] # << >>
+    /\ LET m == Head(network[s][n])
+       IN /\ m.type = ACK
+          /\ network' = [network EXCEPT ![s][n] = Tail(@)]
+          /\ syncstate' = [syncstate EXCEPT ![n][s][m.id] = InitialSyncState("done")]
+  /\ UNCHANGED <<epoch>>
+
+(***************************************************************************)
+(* Node `n` sends all sync messages to `r`                                 *)
+(***************************************************************************)
+Send(n, r) ==
+  /\ syncstate[n][r] # << >>
+  /\ \A m \in Node:
+     LET msg == syncstate[n][r][m] IN
+     IF msg.SendEpoch < epoch[n] \/ msg.type = "-" \/ msg.type = "done"
+     THEN TRUE
+     ELSE
+        /\ syncstate' = [syncstate EXCEPT ![n][r][m] = [type |-> @.type, SendCount |-> @.SendCount + 1, SendEpoch |-> @.SendEpoch + 1]]
+        /\ CASE msg.type = OFFER -> AppendMessage(n, r, OfferMessage(m))
+          [] msg.type = REQUEST -> AppendMessage(n, r, RequestMessage(m))
+          [] msg.type = MSG -> AppendMessage(n, r, MsgMessage(m))
+       /\ UNCHANGED <<epoch>>
+  /\ UNCHANGED <<syncstate, network, epoch>>
+
+(***************************************************************************)
+(* Node `n` transitions to next epoch                                      *)
+(***************************************************************************)
+NextEpoch(n) ==
+    /\ epoch' = [epoch EXCEPT ![n] = @ + 1]
+    /\ UNCHANGED <<syncstate, network>>
 
 (***************************************************************************)
 (* Next-state relation.                                                    *)
 (***************************************************************************)
 Next ==
+  \/ \E n \in Node : NextEpoch(n)
   \/ \E n \in Node : \E s \in Node \ {n} :
-    Offer(n, s) \/ ReceiveOffer(n, s) \/ ReceiveRequest(n, s) \/
-    ReceiveMessage(n, s) \/ ReceiveAck(n, s)
+    OfferV2(n, s) \/ OnOfferV2(n, s) \/ OnRequestV2(n, s) \/
+    OnMessageV2(n, s) \/ OnAckV2(n, s) \/ Send(n, s)
 
-vars == <<network, state>>
+vars == <<network, epoch, syncstate>>
 
 Spec == Init /\ [][Next]_vars
 
@@ -166,6 +168,6 @@ Spec == Init /\ [][Next]_vars
 (* asserts that all messages are delivered.                                *)
 (***************************************************************************)
 AllMessagesDelivered ==
-  /\ \A n \in Node : \A s \in Node \ {n} : state[n][s] # "delivered"
+  /\ syncstate[1][2][1].type = "done"
 
 =============================================================================
