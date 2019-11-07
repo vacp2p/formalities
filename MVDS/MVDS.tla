@@ -42,7 +42,7 @@ Message ==
 (***************************************************************************)
 (* Synchronization State used in MVDS                                      *)
 (***************************************************************************)
-SyncState == [type: Type, SendCount: Nat, SendEpoch: Nat]
+SyncState == [type |-> Type, SendCount |-> Nat, SendEpoch |-> Nat]
 InitialSyncState(t) == [type |-> t, SendCount |-> 0, SendEpoch |-> 0]
 Test == [type |-> "-", SendCount |-> 0, SendEpoch |-> 0]
 
