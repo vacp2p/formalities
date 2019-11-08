@@ -16,8 +16,6 @@ VARIABLES network, \* the network with which nodes pass messages to each other
 \* add retransmissions
 \* retransmissions will require better usage of state
 
-State == { "-", "offered", "delivered" }
-
 (***************************************************************************)
 (* Messages used in MVDS                                                   *)
 (***************************************************************************)
@@ -29,9 +27,9 @@ ACK == "ack"
 Type == {"-", OFFER, REQUEST, MSG, "done"}
 
 OfferMessage(msg) == [type |-> OFFER, id |-> msg]
-RequestMessage(msg) == [type |-> REQUEST, id |-> msg]
-MsgMessage(msg) == [type |-> MSG, id |-> msg]
-AckMessage(msg) == [type |-> ACK, id |-> msg]
+RequestMessage(msg) == [type |-> REQUEST, id |->  msg]
+MsgMessage(msg) == [type |-> MSG, id |->  msg]
+AckMessage(msg) == [type |-> ACK, id |->  msg]
 
 Message ==
   {OfferMessage(msg) : msg \in Node} \union
@@ -44,7 +42,7 @@ Message ==
 (***************************************************************************)
 SyncState == [type |-> Type, SendCount |-> Nat, SendEpoch |-> Nat]
 InitialSyncState(t) == [type |-> t, SendCount |-> 0, SendEpoch |-> 0]
-Test == [type |-> "-", SendCount |-> 0, SendEpoch |-> 0]
+EmptySyncState == [type |-> "-", SendCount |-> 0, SendEpoch |-> 0]
 
 (***************************************************************************)
 (* The type correctness predicate.                                         *)
@@ -57,7 +55,7 @@ TypeOK ==
 (***************************************************************************)
 Init ==
   /\ network = [s \in Node |-> [r \in Node |-> <<>> ]]
-  /\ syncstate = [s \in Node |-> [r \in Node |-> [i \in Node |-> Test ]]]
+  /\ syncstate = [s \in Node |-> [r \in Node |-> EmptySyncState ]]
   /\ epoch = [s \in Node |-> 0]
 
 (***************************************************************************)
@@ -65,16 +63,16 @@ Init ==
 (* The message may either be dropped or transmitted                        *)
 (***************************************************************************)
 AppendMessage(n, r, m) ==
-  /\ \/ /\ network' = [network EXCEPT ![n][r] = Append(@, m)]
-     \/ /\ TRUE
-        /\ UNCHANGED network
+  /\ Append(network[n][r], m)
+     \*\/ /\ TRUE
+      \*  /\ UNCHANGED network
 
 (***************************************************************************)
 (* Node `n` adds offer sync state for `r`                                  *)
 (***************************************************************************)
 OfferV2(n, r) ==
-  /\ syncstate[n][r][n].type = "-"
-  /\ syncstate' = [syncstate EXCEPT ![n][r][n] = InitialSyncState(OFFER)]
+  /\ syncstate[n][r].type = "-"
+  /\ syncstate' = [syncstate EXCEPT ![n][r] = InitialSyncState(OFFER)]
   /\ UNCHANGED <<network, epoch>>
 
 (***************************************************************************)
@@ -82,11 +80,11 @@ OfferV2(n, r) ==
 (***************************************************************************)
 OnOfferV2(n, s) ==
   /\ network[s][n] # << >>
+  /\ syncstate[n][s].type # REQUEST
   /\ LET m == Head(network[s][n])
      IN /\ m.type = OFFER
         /\ network' = [network EXCEPT ![s][n] = Tail(@)]
-        /\ syncstate[n][s][m.id].type = ""
-        /\ syncstate' = [syncstate EXCEPT ![n][s][m.id] = InitialSyncState(REQUEST)]
+        /\ syncstate' = [syncstate EXCEPT ![n][s] = InitialSyncState(REQUEST)]
   /\ UNCHANGED <<epoch>>
 
 (***************************************************************************)
@@ -98,8 +96,7 @@ OnRequestV2(n, s) ==
   /\ LET m == Head(network[s][n])
      IN /\ m.type = REQUEST
         /\ network' = [network EXCEPT ![s][n] = Tail(@)]
-        /\ syncstate[n][s][m.id].type = ""
-        /\ syncstate' = [syncstate EXCEPT ![n][s][m.id] = InitialSyncState(MSG)]
+        /\ syncstate' = [syncstate EXCEPT ![n][s] = InitialSyncState(MSG)]
   /\ UNCHANGED <<epoch>>
 
 (***************************************************************************)
@@ -109,9 +106,8 @@ OnMessageV2(n, s) ==
   /\ network[s][n] # << >>
     /\ LET m == Head(network[s][n])
        IN /\ m.type = MSG
-          /\ network' = [network EXCEPT ![s][n] = Tail(@)]
-          /\ AppendMessage(s, n, AckMessage(m.id))
-  /\ UNCHANGED <<epoch>>
+          /\ network' = [network EXCEPT ![s][n] = Tail(@), ![n][s] = Append(@, AckMessage(m.id))]
+  /\ UNCHANGED <<epoch, syncstate>>
 
 (***************************************************************************)
 (* Node `n` receives an ack from `s`                                       *)
@@ -121,25 +117,22 @@ OnAckV2(n, s) ==
     /\ LET m == Head(network[s][n])
        IN /\ m.type = ACK
           /\ network' = [network EXCEPT ![s][n] = Tail(@)]
-          /\ syncstate' = [syncstate EXCEPT ![n][s][m.id] = InitialSyncState("done")]
+          /\ syncstate' = [syncstate EXCEPT ![n][s] = InitialSyncState("done")]
   /\ UNCHANGED <<epoch>>
 
 (***************************************************************************)
 (* Node `n` sends all sync messages to `r`                                 *)
 (***************************************************************************)
 Send(n, r) ==
-  /\ syncstate[n][r] # << >>
-  /\ \A m \in Node:
-     LET msg == syncstate[n][r][m] IN
-     IF msg.SendEpoch < epoch[n] \/ msg.type = "-" \/ msg.type = "done"
-     THEN TRUE
-     ELSE
-        /\ syncstate' = [syncstate EXCEPT ![n][r][m] = [type |-> @.type, SendCount |-> @.SendCount + 1, SendEpoch |-> @.SendEpoch + 1]]
-        /\ CASE msg.type = OFFER -> AppendMessage(n, r, OfferMessage(m))
-          [] msg.type = REQUEST -> AppendMessage(n, r, RequestMessage(m))
-          [] msg.type = MSG -> AppendMessage(n, r, MsgMessage(m))
-       /\ UNCHANGED <<epoch>>
-  /\ UNCHANGED <<syncstate, network, epoch>>
+  /\ syncstate[n][r].type # "-"
+  /\ syncstate[n][r].type # "done"
+  \* /\ syncstate[n][r].SendEpoch <= epoch[n]
+  /\ syncstate' = [syncstate EXCEPT ![n][r] = [type |-> @.type, SendCount |-> @.SendCount + 1, SendEpoch |-> @.SendEpoch + 1]]
+  /\ LET msg == syncstate[n][r]
+     IN CASE msg.type = OFFER -> network' = [network EXCEPT ![n][r] = Append(@, OfferMessage(n))]
+          [] msg.type = REQUEST -> network' = [network EXCEPT ![n][r] = Append(@, RequestMessage(n))]
+          [] msg.type = MSG -> network' = [network EXCEPT ![n][r] = Append(@, MsgMessage(n))]
+  /\ UNCHANGED <<epoch>>
 
 (***************************************************************************)
 (* Node `n` transitions to next epoch                                      *)
@@ -152,10 +145,9 @@ NextEpoch(n) ==
 (* Next-state relation.                                                    *)
 (***************************************************************************)
 Next ==
-  \/ \E n \in Node : NextEpoch(n)
+  \/ \E n \in Node : \E s \in Node \ {n} : OfferV2(n, s)
   \/ \E n \in Node : \E s \in Node \ {n} :
-    OfferV2(n, s) \/ OnOfferV2(n, s) \/ OnRequestV2(n, s) \/
-    OnMessageV2(n, s) \/ OnAckV2(n, s) \/ Send(n, s)
+        OnOfferV2(n, s) \/ OnRequestV2(n, s) \/ OnMessageV2(n, s) \/ OnAckV2(n, s) \/ Send(n, s)
 
 vars == <<network, epoch, syncstate>>
 
@@ -167,7 +159,6 @@ Spec == Init /\ [][Next]_vars
 (* A state constraint useful for validating the specification,             *)
 (* asserts that all messages are delivered.                                *)
 (***************************************************************************)
-AllMessagesDelivered ==
-  /\ syncstate[1][2][1].type = "done"
+AllMessagesDelivered == syncstate[2][1].type # "done"
 
 =============================================================================
