@@ -63,9 +63,9 @@ Init ==
 (* The message may either be dropped or transmitted                        *)
 (***************************************************************************)
 AppendMessage(n, r, m) ==
-  /\ Append(network[n][r], m)
-     \*\/ /\ TRUE
-      \*  /\ UNCHANGED network
+  /\ \/ /\ Append(network[n][r], m)
+     \/ /\ TRUE
+        /\ UNCHANGED <<network>>
 
 (***************************************************************************)
 (* Node `n` adds offer sync state for `r`                                  *)
@@ -128,12 +128,10 @@ Send(n, r) ==
   /\ syncstate[n][r].type # "done"
   \* /\ syncstate[n][r].SendEpoch <= epoch[n]
   /\ syncstate' = [syncstate EXCEPT ![n][r] = [type |-> @.type, SendCount |-> @.SendCount + 1, SendEpoch |-> @.SendEpoch + 1]]
-  /\ \/ /\ LET msg == syncstate[n][r]
-           IN CASE msg.type = OFFER -> network' = [network EXCEPT ![n][r] = Append(@, OfferMessage(n))]
+  /\ LET msg == syncstate[n][r]
+         IN CASE msg.type = OFFER -> network' = [network EXCEPT ![n][r] = Append(@, OfferMessage(n))]
               [] msg.type = REQUEST -> network' = [network EXCEPT ![n][r] = Append(@, RequestMessage(n))]
               [] msg.type = MSG -> network' = [network EXCEPT ![n][r] = Append(@, MsgMessage(n))]
-      \/ /\ TRUE
-         /\ UNCHANGED <<network>>
   /\ UNCHANGED <<epoch>>
 
 (***************************************************************************)
